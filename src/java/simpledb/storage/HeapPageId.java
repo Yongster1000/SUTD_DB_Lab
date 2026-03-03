@@ -13,12 +13,14 @@ public class HeapPageId implements PageId {
      * @param pgNo The page number in that table.
      */
     public HeapPageId(int tableId, int pgNo) {
+        // some code goes here
         this.tableId = tableId;
         this.pgNo = pgNo;
     }
 
     /** @return the table associated with this PageId */
     public int getTableId() { 
+        // some code goes here
         return tableId; 
     }
 
@@ -27,6 +29,7 @@ public class HeapPageId implements PageId {
      *   this PageId
      */
     public int getPageNumber() {
+        // some code goes here
         return pgNo;
     }
 
@@ -37,6 +40,7 @@ public class HeapPageId implements PageId {
      * @see BufferPool
      */
     public int hashCode() {
+        // some code goes here
         // A simple way to combine two ints into a hash
         return 31 * tableId + pgNo;
     }
@@ -49,6 +53,7 @@ public class HeapPageId implements PageId {
      *   ids are the same)
      */
     public boolean equals(Object o) {
+        // some code goes here
         if (!(o instanceof HeapPageId)) return false;
         HeapPageId id = (HeapPageId) o;
         return id.tableId == this.tableId && id.pgNo == this.pgNo;
