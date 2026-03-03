@@ -42,6 +42,7 @@ public class BufferPool {
      * @param numPages maximum number of pages in this buffer pool.
      */
     public BufferPool(int numPages) {
+        // some code goes here
         this.numPages = numPages;
         this.pageStore = new ConcurrentHashMap<>();
     }
@@ -76,6 +77,7 @@ public class BufferPool {
      * @param perm the requested permissions on the page
      */
     public Page getPage(TransactionId tid, PageId pid, Permissions perm)
+            // some code goes here
         throws TransactionAbortedException, DbException {
         
         // 1. Check if we already have it
