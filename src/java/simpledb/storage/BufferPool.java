@@ -27,6 +27,9 @@ public class BufferPool {
     private static final int DEFAULT_PAGE_SIZE = 4096;
 
     private static int pageSize = DEFAULT_PAGE_SIZE;
+
+    private final int numPages;
+    private final ConcurrentHashMap<PageId, Page> pageStore;
     
     /** Default number of pages passed to the constructor. This is used by
     other classes. BufferPool should use the numPages argument to the
@@ -39,7 +42,8 @@ public class BufferPool {
      * @param numPages maximum number of pages in this buffer pool.
      */
     public BufferPool(int numPages) {
-        // some code goes here
+        this.numPages = numPages;
+        this.pageStore = new ConcurrentHashMap<>();
     }
     
     public static int getPageSize() {
@@ -71,10 +75,28 @@ public class BufferPool {
      * @param pid the ID of the requested page
      * @param perm the requested permissions on the page
      */
-    public  Page getPage(TransactionId tid, PageId pid, Permissions perm)
+    public Page getPage(TransactionId tid, PageId pid, Permissions perm)
         throws TransactionAbortedException, DbException {
-        // some code goes here
-        return null;
+        
+        // 1. Check if we already have it
+        if (pageStore.containsKey(pid)) {
+            return pageStore.get(pid);
+        }
+
+        // 2. If not, check if we have space to add a new one
+        if (pageStore.size() >= numPages) {
+            // In later labs we implement eviction. For now, just throw an error.
+            throw new DbException("Buffer pool is full.");
+        }
+
+        // 3. Fetch from disk
+        // We use Database.getCatalog() to find the file associated with this page's tableId
+        DbFile file = Database.getCatalog().getDatabaseFile(pid.getTableId());
+        Page page = file.readPage(pid);
+
+        // 4. Store in cache and return
+        pageStore.put(pid, page);
+        return page;
     }
 
     /**
@@ -180,8 +202,7 @@ public class BufferPool {
         are removed from the cache so they can be reused safely
     */
     public synchronized void discardPage(PageId pid) {
-        // some code goes here
-        // not necessary for lab1
+        pageStore.remove(pid);
     }
 
     /**
