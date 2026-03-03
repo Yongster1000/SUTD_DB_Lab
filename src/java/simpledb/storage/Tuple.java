@@ -114,7 +114,5 @@ public class Tuple implements Serializable {
      * */
     public void resetTupleDesc(TupleDesc td) {
         this.td = td;
-        // Usually, we'd resize the fields array here too if the size changed
-        this.fields = new Field[td.numFields()];
     }
 }
