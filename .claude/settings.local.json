@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Bash(winget --version)"
+      "Bash(winget --version)",
+      "Bash(echo $PATH)",
+      "Bash(cmd.exe /c \"echo %PATH%\")",
+      "Bash(tr ';' '\\\\n')"
     ]
   }
 }

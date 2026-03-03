@@ -133,6 +133,9 @@ public class TupleDesc implements Serializable {
      *             if no field with a matching name is found.
      */
     public int fieldNameToIndex(String name) throws NoSuchElementException {
+        if (name == null) {
+            throw new NoSuchElementException("No field with name: null");
+        }
         for (int i = 0; i < items.length; i++) {
             if (name.equals(items[i].fieldName)) {
                 return i;
