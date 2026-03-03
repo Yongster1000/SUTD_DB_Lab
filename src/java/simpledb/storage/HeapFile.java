@@ -65,11 +65,13 @@ public class HeapFile implements DbFile {
      * @return TupleDesc of this DbFile.
      */
     public TupleDesc getTupleDesc() {
+        // some code goes here
         return td;
     }
 
     // see DbFile.java for javadocs
     public Page readPage(PageId pid) {
+        // some code goes here
         int pageSize = BufferPool.getPageSize();
         byte[] data = new byte[pageSize];
         
@@ -94,6 +96,7 @@ public class HeapFile implements DbFile {
      * Returns the number of pages in this HeapFile.
      */
     public int numPages() {
+        // some code goes here
         return (int) (f.length() / BufferPool.getPageSize());
     }
 
@@ -115,6 +118,7 @@ public class HeapFile implements DbFile {
 
     // see DbFile.java for javadocs
     public DbFileIterator iterator(TransactionId tid) {
+        // some code goes here
         return new HeapFileIterator(this, tid);
     }
 }

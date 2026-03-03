@@ -71,7 +71,8 @@ public class HeapPage implements Page {
     /** Retrieve the number of tuples on this page.
         @return the number of tuples on this page
     */
-    private int getNumTuples() {        
+    private int getNumTuples() {  
+        // some code goes here      
         return (int) Math.floor((BufferPool.getPageSize() * 8.0) / (td.getSize() * 8.0 + 1.0));
     }
 
@@ -79,7 +80,8 @@ public class HeapPage implements Page {
      * Computes the number of bytes in the header of a page in a HeapFile with each tuple occupying tupleSize bytes
      * @return the number of bytes in the header of a page in a HeapFile with each tuple occupying tupleSize bytes
      */
-    private int getHeaderSize() {        
+    private int getHeaderSize() {  
+        // some code goes here      
         return (int) Math.ceil(getNumTuples() / 8.0);
     }
     
@@ -112,6 +114,7 @@ public class HeapPage implements Page {
      * @return the PageId associated with this page.
      */
     public HeapPageId getId() {
+        //some code goes here
         return this.pid;
     }
 
@@ -243,6 +246,7 @@ public class HeapPage implements Page {
      * @param t The tuple to delete
      */
     public void deleteTuple(Tuple t) throws DbException {
+        // some code goes here
         RecordId rid = t.getRecordId();
         if (rid == null || !rid.getPageId().equals(pid)) {
             throw new DbException("Tuple does not exist on this page.");
@@ -292,6 +296,7 @@ public class HeapPage implements Page {
      * Returns the number of empty slots on this page.
      */
     public int getNumEmptySlots() {
+        // some code goes here
         int emptyCount = 0;
         for (int i = 0; i < numSlots; i++) {
             // If the slot is NOT used, it is empty
@@ -305,6 +310,7 @@ public class HeapPage implements Page {
      * Returns true if associated slot on this page is filled.
      */
     public boolean isSlotUsed(int i) {
+    // some code goes here
     int byteIdx = i / 8;
     int bitIdx = i % 8;
     return (header[byteIdx] & (1 << bitIdx)) != 0;
