@@ -14,17 +14,20 @@ public class Tuple implements Serializable {
     private static final long serialVersionUID = 1L;
     private TupleDesc td;
     private RecordId recordId;
+    private Field[] fields;
+
     /**
      * Create a new tuple with the specified schema (type).
      *
      * @param td
-     *            the schema of this tuple. It must be a valid TupleDesc
-     *            instance with at least one field.
+     *           the schema of this tuple. It must be a valid TupleDesc
+     *           instance with at least one field.
      */
     public Tuple(TupleDesc td) {
         // some code goes here
         this.td = td;
         this.recordId = null;
+        this.fields = new Field[td.numFields()];
     }
 
     /**
@@ -61,23 +64,29 @@ public class Tuple implements Serializable {
      * Change the value of the ith field of this tuple.
      *
      * @param i
-     *            index of the field to change. It must be a valid index.
+     *          index of the field to change. It must be a valid index.
      * @param f
-     *            new value for the field.
+     *          new value for the field.
      */
     public void setField(int i, Field f) {
-        // some code goes here
+        if (i < 0 || i >= fields.length) {
+            throw new IllegalArgumentException();
+        }
+        fields[i] = f;
     }
 
     /**
      * @return the value of the ith field, or null if it has not been set.
      *
      * @param i
-     *            field index to return. Must be a valid index.
+     *          field index to return. Must be a valid index.
      */
     public Field getField(int i) {
         // some code goes here
-        return null;
+        if (i < 0 || i >= fields.length) {
+            throw new IllegalArgumentException();
+        }
+        return fields[i];
     }
 
     /**
@@ -89,25 +98,30 @@ public class Tuple implements Serializable {
      * where \t is any whitespace (except a newline)
      */
     public String toString() {
-        // some code goes here
-        throw new UnsupportedOperationException("Implement this");
+        String out = "";
+        for (int i = 0; i < td.numFields(); i++) {
+            out += fields[i].toString();
+            if (i < td.numFields() - 1) {
+                out += " ";
+            }
+        }
+        return out;
     }
 
     /**
      * @return
-     *        An iterator which iterates over all the fields of this tuple
-     * */
-    public Iterator<Field> fields()
-    {
+     *         An iterator which iterates over all the fields of this tuple
+     */
+    public Iterator<Field> fields() {
         // some code goes here
-        return null;
+        return Arrays.asList(fields).iterator();
     }
 
     /**
      * reset the TupleDesc of this tuple (only affecting the TupleDesc)
-     * */
-    public void resetTupleDesc(TupleDesc td)
-    {
+     */
+    public void resetTupleDesc(TupleDesc td) {
         // some code goes here
+        this.td = td;
     }
 }
