@@ -41,6 +41,7 @@ public class TupleDesc implements Serializable {
     private final List<TDItem> tdItems;
 
     public Iterator<TDItem> iterator() {
+        // some code goes here
         return this.tdItems.iterator();
     }
     
@@ -82,6 +83,7 @@ public class TupleDesc implements Serializable {
      * @return the number of fields in this TupleDesc
      */
     public int numFields() {
+        // some code goes here
         return this.tdItems.size();
     }
 
@@ -95,6 +97,7 @@ public class TupleDesc implements Serializable {
      *             if i is not a valid field reference.
      */
     public String getFieldName(int i) throws NoSuchElementException {
+        // some code goes here
         if (i < 0 || i >= this.tdItems.size()) {
             throw new NoSuchElementException("Index " + i + " is not a valid field reference.");
         }
@@ -168,6 +171,7 @@ public class TupleDesc implements Serializable {
      */
 
     public static TupleDesc merge(TupleDesc td1, TupleDesc td2) {
+        // some code goes here
         // 1. Figure out the total size of the new merged schema
         int totalFields = td1.numFields() + td2.numFields();
         
@@ -246,6 +250,7 @@ public class TupleDesc implements Serializable {
      * @return String describing this descriptor.
      */
     public String toString() {
+        // some code goes here
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < tdItems.size(); i++) {
             sb.append(tdItems.get(i).toString());

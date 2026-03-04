@@ -22,6 +22,7 @@ public class Tuple implements Serializable {
      *            instance with at least one field.
      */
     public Tuple(TupleDesc td) {
+        // some code goes here
         this.td = td;
         this.recordId = null;
         // Create an array of Fields based on the number of columns in the schema
