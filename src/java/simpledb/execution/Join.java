@@ -14,6 +14,15 @@ public class Join extends Operator {
 
     private static final long serialVersionUID = 1L;
 
+    // State variables
+    private JoinPredicate p;
+    private OpIterator child1;
+    private OpIterator child2;
+
+    // We need this to remember the current tuple from the outer loop (child1) 
+    // across multiple calls to fetchNext()
+    private Tuple currentT1 = null;
+
     /**
      * Constructor. Accepts two children to join and the predicate to join them
      * on
@@ -27,11 +36,14 @@ public class Join extends Operator {
      */
     public Join(JoinPredicate p, OpIterator child1, OpIterator child2) {
         // some code goes here
+        this.p = p;
+        this.child1 = child1;
+        this.child2 = child2;
     }
 
     public JoinPredicate getJoinPredicate() {
         // some code goes here
-        return null;
+        return this.p;
     }
 
     /**
@@ -41,7 +53,7 @@ public class Join extends Operator {
      * */
     public String getJoinField1Name() {
         // some code goes here
-        return null;
+        return child1.getTupleDesc().getFieldName(p.getField1());
     }
 
     /**
@@ -51,7 +63,7 @@ public class Join extends Operator {
      * */
     public String getJoinField2Name() {
         // some code goes here
-        return null;
+        return child2.getTupleDesc().getFieldName(p.getField2());
     }
 
     /**
@@ -60,20 +72,32 @@ public class Join extends Operator {
      */
     public TupleDesc getTupleDesc() {
         // some code goes here
-        return null;
+        // Here we finally use the merge method you wrote in Lab 1!
+        return TupleDesc.merge(child1.getTupleDesc(), child2.getTupleDesc());
     }
 
     public void open() throws DbException, NoSuchElementException,
             TransactionAbortedException {
         // some code goes here
+        super.open();
+        child1.open();
+        child2.open();
+        currentT1 = null; // Reset our state pointer
     }
 
     public void close() {
         // some code goes here
+        super.close();
+        child1.close();
+        child2.close();
+        currentT1 = null;
     }
 
     public void rewind() throws DbException, TransactionAbortedException {
         // some code goes here
+        child1.rewind();
+        child2.rewind();
+        currentT1 = null;
     }
 
     /**
@@ -96,18 +120,66 @@ public class Join extends Operator {
      */
     protected Tuple fetchNext() throws TransactionAbortedException, DbException {
         // some code goes here
-        return null;
+        
+        // Loop as long as there is an active row from the left table
+        while (child1.hasNext() || currentT1 != null) {
+            
+            // If we don't have a current outer tuple, grab the next one
+            if (currentT1 == null && child1.hasNext()) {
+                currentT1 = child1.next();
+            }
+            
+            // Loop through the right table (inner loop)
+            while (child2.hasNext()) {
+                Tuple t2 = child2.next();
+                
+                // If the predicate matches, we join them!
+                if (p.filter(currentT1, t2)) {
+                    
+                    // 1. Create a new tuple with the merged schema
+                    TupleDesc mergedDesc = getTupleDesc();
+                    Tuple mergedTuple = new Tuple(mergedDesc);
+                    
+                    // 2. Copy the fields from the left tuple
+                    int i = 0;
+                    for (int j = 0; j < currentT1.getTupleDesc().numFields(); j++) {
+                        mergedTuple.setField(i, currentT1.getField(j));
+                        i++;
+                    }
+                    
+                    // 3. Copy the fields from the right tuple
+                    for (int j = 0; j < t2.getTupleDesc().numFields(); j++) {
+                        mergedTuple.setField(i, t2.getField(j));
+                        i++;
+                    }
+                    
+                    // Return the joined tuple immediately
+                    return mergedTuple;
+                }
+            }
+            
+            // If we finish looping through child2, we need to move to the next 
+            // row of child1. We rewind child2 to start from the beginning again.
+            child2.rewind();
+            currentT1 = null; 
+        }
+        
+        return null; // Exhausted both iterators
     }
 
     @Override
     public OpIterator[] getChildren() {
         // some code goes here
-        return null;
+        return new OpIterator[] { this.child1, this.child2 };
     }
 
     @Override
     public void setChildren(OpIterator[] children) {
         // some code goes here
+        if (children != null && children.length >= 2) {
+            this.child1 = children[0];
+            this.child2 = children[1];
+        }
     }
 
 }
