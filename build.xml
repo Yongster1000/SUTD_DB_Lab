@@ -48,6 +48,8 @@
             <javac srcdir="@{srcdir}" destdir="@{destdir}" includeAntRuntime="no"
                     debug="${compile.debug}" source="${sourceversion}">
                 <compilerarg value="-Xlint:unchecked" />
+                <compilerarg value="-encoding" />
+                <compilerarg value="UTF-8" />
                 <!--<compilerarg value="-Xlint:deprecation" />-->
                 <compileoptions/>
             </javac>
