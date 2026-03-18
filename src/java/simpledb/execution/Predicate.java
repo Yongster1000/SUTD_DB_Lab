@@ -113,7 +113,7 @@ public class Predicate implements Serializable {
         Field tupleField = t.getField(this.field);
         
         // 2. Use the built-in compare method of the Field interface
-        // to check if it matches our condition (e.g., is tupleField > operand?)
+        // to check if it matches our condition (eg, is tupleField > operand?)
         return tupleField.compare(this.op, this.operand);
     }
 
