@@ -106,47 +106,57 @@ public class HeapFile implements DbFile {
     }
 
     // see DbFile.java for javadocs
+    // Updated insertTuple for Lab 3
+
     public List<Page> insertTuple(TransactionId tid, Tuple t)
             throws DbException, IOException, TransactionAbortedException {
-        // some code goes here
         ArrayList<Page> modifiedPages = new ArrayList<>();
         
         // 1. Loop through all existing pages looking for an empty slot
         for (int i = 0; i < numPages(); i++) {
             HeapPageId pid = new HeapPageId(getId(), i);
             
-            // It is strictly required to fetch the page through the BufferPool!
-            // We request READ_WRITE permissions because we intend to modify it.
-            HeapPage page = (HeapPage) Database.getBufferPool().getPage(tid, pid, Permissions.READ_WRITE);
+            // OPTIMIZATION: Start with READ_ONLY to check for space.
+            // This allows concurrent transactions to check the same page.
+            HeapPage page = (HeapPage) Database.getBufferPool().getPage(tid, pid, Permissions.READ_ONLY);
             
             if (page.getNumEmptySlots() > 0) {
-                // We found a page with room! Insert the tuple and return.
-                page.insertTuple(t);
-                modifiedPages.add(page);
-                return modifiedPages;
+                // We found space! But we only have a READ lock.
+                // We need to request the page again with READ_WRITE to get an Exclusive lock.
+                // Our BufferPool.getPage logic handles this "upgrade" automatically.
+                page = (HeapPage) Database.getBufferPool().getPage(tid, pid, Permissions.READ_WRITE);
+                
+                // Re-check just in case someone else filled it between our two getPage calls
+                if (page.getNumEmptySlots() > 0) {
+                    page.insertTuple(t);
+                    modifiedPages.add(page);
+                    return modifiedPages;
+                }
+            } else {
+                // EXERCISE 2 OPTIMIZATION:
+                // If the page is full, we didn't use any data. 
+                // Release the lock immediately to improve concurrency.
+                Database.getBufferPool().unsafeReleasePage(tid, pid);
             }
         }
         
-        // 2. If we reach this point, ALL existing pages are 100% full.
-        // We must create a new page and append it to the physical file on disk.
-        
-        // The new page number is exactly the current numPages() (since it's 0-indexed)
-        HeapPageId newPid = new HeapPageId(getId(), numPages());
-        
-        // Create a blank page using the static helper method you wrote
-        HeapPage blankPage = new HeapPage(newPid, HeapPage.createEmptyPageData());
-        
-        // Write this completely empty page to disk immediately so the BufferPool can find it
-        writePage(blankPage);
-        
-        // Now fetch it through the BufferPool just like a normal page
-        HeapPage newPage = (HeapPage) Database.getBufferPool().getPage(tid, newPid, Permissions.READ_WRITE);
-        
-        // Insert the tuple into our newly minted page
-        newPage.insertTuple(t);
-        modifiedPages.add(newPage);
-        
-        return modifiedPages;
+        // 2. If we reach here, we must append a new page.
+        // We synchronize on 'this' (the HeapFile) to prevent two threads 
+        // from appending the same page number simultaneously.
+        synchronized (this) {
+            int newPageNo = numPages();
+            HeapPageId newPid = new HeapPageId(getId(), newPageNo);
+            HeapPage blankPage = new HeapPage(newPid, HeapPage.createEmptyPageData());
+            
+            // Physically grow the file
+            writePage(blankPage);
+            
+            // Fetch the new page via BufferPool to get the X-Lock
+            HeapPage newPage = (HeapPage) Database.getBufferPool().getPage(tid, newPid, Permissions.READ_WRITE);
+            newPage.insertTuple(t);
+            modifiedPages.add(newPage);
+            return modifiedPages;
+        }
     }
 
     // see DbFile.java for javadocs

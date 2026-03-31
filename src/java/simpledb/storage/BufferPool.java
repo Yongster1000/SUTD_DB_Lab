@@ -9,10 +9,8 @@ import simpledb.transaction.TransactionId;
 
 import java.io.*;
 
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.LinkedHashMap;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * BufferPool manages the reading and writing of pages into memory from
@@ -36,6 +34,9 @@ public class BufferPool {
      * We synchronize on the BufferPool instance for thread safety.
      */
     private final LinkedHashMap<PageId, Page> pageStore;
+
+    // Lab 3 Exercise 1: Lock Manager instance
+    private final LockManager lockManager;
     
     /** Default number of pages passed to the constructor. This is used by
     other classes. BufferPool should use the numPages argument to the
@@ -52,6 +53,7 @@ public class BufferPool {
         this.numPages = numPages;
         // initialCapacity, loadFactor, accessOrder = true
         this.pageStore = new LinkedHashMap<>(numPages, 0.75f, true);
+        this.lockManager = new LockManager();
     }
     
     public static int getPageSize() {
@@ -72,100 +74,89 @@ public class BufferPool {
      * Retrieve the specified page with the associated permissions.
      * Will acquire a lock and may block if that lock is held by another
      * transaction.
-     * <p>
-     * The retrieved page should be looked up in the buffer pool.  If it
-     * is present, it should be returned.  If it is not present, it should
-     * be added to the buffer pool and returned.  If there is insufficient
-     * space in the buffer pool, a page should be evicted and the new page
-     * should be added in its place.
-     *
-     * @param tid the ID of the transaction requesting the page
-     * @param pid the ID of the requested page
-     * @param perm the requested permissions on the page
      */
-    public synchronized Page getPage(TransactionId tid, PageId pid, Permissions perm)
+    public Page getPage(TransactionId tid, PageId pid, Permissions perm)
         throws TransactionAbortedException, DbException {
-        // some code goes here
         
-        // 1. Check if we already have it. LinkedHashMap moves it to end (MRU) automatically.
-        if (pageStore.containsKey(pid)) {
-            return pageStore.get(pid);
+        // Lab 3 Exercise 1: Acquire the lock BEFORE accessing the page.
+        lockManager.acquireLock(tid, pid, perm);
+
+        synchronized (this) {
+            // 1. Check if we already have it. LinkedHashMap moves it to end (MRU) automatically.
+            if (pageStore.containsKey(pid)) {
+                return pageStore.get(pid);
+            }
+
+            // 2. If not, check if we have space to add a new one
+            if (pageStore.size() >= numPages) {
+                evictPage();
+            }
+
+            // 3. Fetch from disk
+            DbFile file = Database.getCatalog().getDatabaseFile(pid.getTableId());
+            Page page = file.readPage(pid);
+
+            // 4. Store in cache and return
+            pageStore.put(pid, page);
+            return page;
         }
-
-        // 2. If not, check if we have space to add a new one
-        if (pageStore.size() >= numPages) {
-            evictPage();
-        }
-
-        // 3. Fetch from disk
-        DbFile file = Database.getCatalog().getDatabaseFile(pid.getTableId());
-        Page page = file.readPage(pid);
-
-        // 4. Store in cache and return
-        pageStore.put(pid, page);
-        return page;
     }
 
     /**
      * Releases the lock on a page.
-     * Calling this is very risky, and may result in wrong behavior. Think hard
-     * about who needs to call this and why, and why they can run the risk of
-     * calling it.
-     *
-     * @param tid the ID of the transaction requesting the unlock
-     * @param pid the ID of the page to unlock
      */
-    public  void unsafeReleasePage(TransactionId tid, PageId pid) {
-        // some code goes here
-        // not necessary for lab1|lab2
+    public void unsafeReleasePage(TransactionId tid, PageId pid) {
+        // Lab 3 Exercise 1: Delegate to lock manager
+        lockManager.releaseLock(tid, pid);
     }
 
     /**
      * Release all locks associated with a given transaction.
-     *
-     * @param tid the ID of the transaction requesting the unlock
      */
     public void transactionComplete(TransactionId tid) {
-        // some code goes here
-        // not necessary for lab1|lab2
+        // Lab 3 Exercise 4: Default to commit
+        transactionComplete(tid, true);
     }
 
     /** Return true if the specified transaction has a lock on the specified page */
     public boolean holdsLock(TransactionId tid, PageId p) {
-        // some code goes here
-        // not necessary for lab1|lab2
-        return false;
+        // Lab 3 Exercise 1: Check with lock manager
+        return lockManager.holdsLock(tid, p);
     }
 
     /**
      * Commit or abort a given transaction; release all locks associated to
      * the transaction.
-     *
-     * @param tid the ID of the transaction requesting the unlock
-     * @param commit a flag indicating whether we should commit or abort
      */
     public void transactionComplete(TransactionId tid, boolean commit) {
-        // some code goes here
-        // not necessary for lab1|lab2
+        // Lab 3 Exercise 4: Atomic Commit/Abort Logic
+        synchronized (this) {
+            if (commit) {
+                try {
+                    flushPages(tid);
+                } catch (IOException e) {
+                    throw new RuntimeException("Failed to flush pages for transaction " + tid);
+                }
+            } else {
+                // ABORT logic: Revert dirty pages for this tid to their before-images
+                java.util.Set<PageId> pids = new java.util.HashSet<>(pageStore.keySet());
+                for (PageId pid : pids) {
+                    Page p = pageStore.get(pid);
+                    if (p != null && tid.equals(p.isDirty())) {
+                        pageStore.put(pid, p.getBeforeImage());
+                    }
+                }
+            }
+        }
+        // Always release locks at the end of the transaction
+        lockManager.releaseAllLocks(tid);
     }
 
     /**
-     * Add a tuple to the specified table on behalf of transaction tid.  Will
-     * acquire a write lock on the page the tuple is added to and any other 
-     * pages that are updated (Lock acquisition is not needed for lab2). 
-     * May block if the lock(s) cannot be acquired.
-     * * Marks any pages that were dirtied by the operation as dirty by calling
-     * their markDirty bit, and adds versions of any pages that have 
-     * been dirtied to the cache (replacing any existing versions of those pages) so 
-     * that future requests see up-to-date pages. 
-     *
-     * @param tid the transaction adding the tuple
-     * @param tableId the table to add the tuple to
-     * @param t the tuple to add
+     * Add a tuple to the specified table on behalf of transaction tid.
      */
     public void insertTuple(TransactionId tid, int tableId, Tuple t)
         throws DbException, IOException, TransactionAbortedException {
-        // some code goes here
         DbFile file = Database.getCatalog().getDatabaseFile(tableId);
         List<Page> modifiedPages = file.insertTuple(tid, t);
         
@@ -179,20 +170,9 @@ public class BufferPool {
 
     /**
      * Remove the specified tuple from the buffer pool.
-     * Will acquire a write lock on the page the tuple is removed from and any
-     * other pages that are updated. May block if the lock(s) cannot be acquired.
-     *
-     * Marks any pages that were dirtied by the operation as dirty by calling
-     * their markDirty bit, and adds versions of any pages that have 
-     * been dirtied to the cache (replacing any existing versions of those pages) so 
-     * that future requests see up-to-date pages. 
-     *
-     * @param tid the transaction deleting the tuple.
-     * @param t the tuple to delete
      */
     public  void deleteTuple(TransactionId tid, Tuple t)
         throws DbException, IOException, TransactionAbortedException {
-        // some code goes here
         int tableId = t.getRecordId().getPageId().getTableId();
         DbFile file = Database.getCatalog().getDatabaseFile(tableId);
         List<Page> modifiedPages = file.deleteTuple(tid, t);
@@ -205,41 +185,18 @@ public class BufferPool {
         }
     }
 
-    /**
-     * Flush all dirty pages to disk.
-     * NB: Be careful using this routine -- it writes dirty data to disk so will
-     * break simpledb if running in NO STEAL mode.
-     */
     public synchronized void flushAllPages() throws IOException {
-        // some code goes here
-        
-        // Create a copy of the keySet to avoid ConcurrentModificationException
-        // when flushPage(pid) reorders the LinkedHashMap
         java.util.Set<PageId> pids = new java.util.HashSet<>(pageStore.keySet());
-        
         for (PageId pid : pids) {
             flushPage(pid);
         }
     }
 
-    /** Remove the specific page id from the buffer pool.
-        Needed by the recovery manager to ensure that the
-        buffer pool doesn't keep a rolled back page in its
-        cache.
-        
-        Also used by B+ tree files to ensure that deleted pages
-        are removed from the cache so they can be reused safely
-    */
     public synchronized void discardPage(PageId pid) {
         pageStore.remove(pid);
     }
 
-    /**
-     * Flushes a certain page to disk
-     * @param pid an ID indicating the page to flush
-     */
     private synchronized  void flushPage(PageId pid) throws IOException {
-        // some code goes here
         Page p = pageStore.get(pid);
         if (p != null && p.isDirty() != null) {
             DbFile file = Database.getCatalog().getDatabaseFile(pid.getTableId());
@@ -248,37 +205,175 @@ public class BufferPool {
         }
     }
 
-    /** Write all pages of the specified transaction to disk.
-     */
-    public synchronized  void flushPages(TransactionId tid) throws IOException {
-        // some code goes here
-        // not necessary for lab1|lab2
+    /** Write all pages of the specified transaction to disk. */
+    public synchronized void flushPages(TransactionId tid) throws IOException {
+        // Lab 3 Exercise 4: FORCE policy implementation
+        
+        // FIX: Create a snapshot of the entries to avoid ConcurrentModificationException
+        // when flushPage() accesses the pageStore and reorders the LinkedHashMap.
+        List<Page> pagesToCheck = new ArrayList<>(pageStore.values());
+        
+        for (Page p : pagesToCheck) {
+            // If the page is dirty and was modified by THIS transaction...
+            if (p.isDirty() != null && p.isDirty().equals(tid)) {
+                flushPage(p.getId());
+                // Update before image so subsequent aborts don't roll back too far
+                p.setBeforeImage();
+            }
+        }
     }
 
     /**
      * Discards a page from the buffer pool.
-     * Flushes the page to disk to ensure dirty pages are updated on disk.
+     * Under NO STEAL, we must NEVER evict a dirty page.
      */
     private synchronized void evictPage() throws DbException {
-        // some code goes here
+        // Lab 3 Exercise 3: NO STEAL Eviction logic
+        PageId evictPid = null;
+        java.util.Iterator<Map.Entry<PageId, Page>> it = pageStore.entrySet().iterator();
         
-        // Check if there is anything to evict
-        if (pageStore.isEmpty()) {
-            return;
+        while (it.hasNext()) {
+            Map.Entry<PageId, Page> entry = it.next();
+            if (entry.getValue().isDirty() == null) {
+                evictPid = entry.getKey();
+                break; 
+            }
         }
 
-        // In access-order LinkedHashMap, the first key is the LRU
-        PageId evictPid = pageStore.keySet().iterator().next();
-            
-        try {
-            // ALWAYS flush a page to disk before removing it from memory
-            flushPage(evictPid);
-        } catch (IOException e) {
-            throw new DbException("Could not flush page during eviction: " + e.getMessage());
+        if (evictPid == null) {
+            throw new DbException("NO STEAL: All pages in buffer pool are dirty. Cannot evict.");
         }
-            
-        // Remove it from the cache to make room
-        discardPage(evictPid);
+
+        pageStore.remove(evictPid);
     }
 
+    // ====================================================================
+    // Lab 3 Exercise 1 & 5: Internal Lock Manager Class
+    // ====================================================================
+    private class LockManager {
+        private final Map<PageId, PageLock> lockMap = new ConcurrentHashMap<>();
+        // Lab 3 Exercise 5: Dependency tracking for Wait-For Graph
+        private final Map<TransactionId, PageId> waitingFor = new ConcurrentHashMap<>();
+
+        public void acquireLock(TransactionId tid, PageId pid, Permissions perm) 
+                throws TransactionAbortedException {
+            
+            PageLock lock = lockMap.computeIfAbsent(pid, k -> new PageLock());
+
+            while (true) {
+                synchronized (this) {
+                    synchronized (lock) {
+                        if (lock.tryAcquire(tid, perm)) {
+                            waitingFor.remove(tid);
+                            return;
+                        }
+                        waitingFor.put(tid, pid);
+                    }
+
+                    // Lab 3 Exercise 5: Cycle detection (Deadlock check)
+                    if (isDeadlock(tid)) {
+                        waitingFor.remove(tid);
+                        throw new TransactionAbortedException();
+                    }
+                }
+
+                try {
+                    Thread.sleep(10); // Wait and retry
+                } catch (InterruptedException e) {
+                    throw new TransactionAbortedException();
+                }
+            }
+        }
+
+        // Lab 3 Exercise 5: DFS-based Cycle Detection
+        private boolean isDeadlock(TransactionId tid) {
+            return hasCycle(tid, tid, new HashSet<>());
+        }
+
+        private boolean hasCycle(TransactionId start, TransactionId current, Set<TransactionId> visited) {
+            visited.add(current);
+            PageId nextPid = waitingFor.get(current);
+            if (nextPid == null) return false;
+
+            PageLock lock = lockMap.get(nextPid);
+            if (lock == null) return false;
+
+            for (TransactionId holder : lock.getAllHolders()) {
+                if (holder.equals(start)) return true;
+                if (!visited.contains(holder)) {
+                    if (hasCycle(start, holder, visited)) return true;
+                }
+            }
+            return false;
+        }
+
+        public synchronized void releaseAllLocks(TransactionId tid) {
+            for (PageId pid : lockMap.keySet()) {
+                releaseLock(tid, pid);
+            }
+            waitingFor.remove(tid);
+        }
+
+        public synchronized void releaseLock(TransactionId tid, PageId pid) {
+            PageLock lock = lockMap.get(pid);
+            if (lock != null) {
+                synchronized (lock) {
+                    lock.release(tid);
+                }
+            }
+        }
+
+        public synchronized boolean holdsLock(TransactionId tid, PageId pid) {
+            PageLock lock = lockMap.get(pid);
+            return lock != null && lock.isHolder(tid);
+        }
+    }
+
+    private class PageLock {
+        private TransactionId exclusiveHolder;
+        private final Set<TransactionId> sharedHolders;
+
+        public PageLock() {
+            this.exclusiveHolder = null;
+            this.sharedHolders = new HashSet<>();
+        }
+
+        // Lab 3 Exercise 5: Helper for deadlock detection
+        public Set<TransactionId> getAllHolders() {
+            Set<TransactionId> holders = new HashSet<>(sharedHolders);
+            if (exclusiveHolder != null) holders.add(exclusiveHolder);
+            return holders;
+        }
+
+        public boolean tryAcquire(TransactionId tid, Permissions perm) {
+            if (exclusiveHolder != null && exclusiveHolder.equals(tid)) return true;
+
+            if (perm == Permissions.READ_ONLY) {
+                if (exclusiveHolder == null) {
+                    sharedHolders.add(tid);
+                    return true;
+                }
+                return false;
+            } else {
+                if (exclusiveHolder == null && 
+                   (sharedHolders.isEmpty() || (sharedHolders.size() == 1 && sharedHolders.contains(tid)))) {
+                    exclusiveHolder = tid;
+                    sharedHolders.remove(tid);
+                    return true;
+                }
+                return false;
+            }
+        }
+
+        public void release(TransactionId tid) {
+            if (exclusiveHolder != null && exclusiveHolder.equals(tid)) {
+                exclusiveHolder = null;
+            }
+            sharedHolders.remove(tid);
+        }
+
+        public boolean isHolder(TransactionId tid) {
+            return (exclusiveHolder != null && exclusiveHolder.equals(tid)) || sharedHolders.contains(tid);
+        }
+    }
 }
