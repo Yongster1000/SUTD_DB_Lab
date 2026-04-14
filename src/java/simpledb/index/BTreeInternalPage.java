@@ -671,7 +671,21 @@ public class BTreeInternalPage extends BTreePage {
 			throw new NoSuchElementException();
 		}
 	}
+
+	/**
+     * Lab 4 Exercise 2 & 3: Helper method to set a child id.
+     * This is especially useful for setting the leftmost child (index 0).
+     */
+    public void setChildId(int i, BTreePageId id) {
+        if (i < 0 || i >= children.length) {
+            return;
+        }
+        children[i] = id.getPageNumber();
+        childCategory = id.pgcateg();
+        markSlotUsed(i, true);
+    }
 }
+
 
 /**
  * Helper class that implements the Java Iterator for entries on a BTreeInternalPage.
