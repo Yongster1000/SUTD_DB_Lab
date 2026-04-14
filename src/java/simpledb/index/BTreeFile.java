@@ -315,7 +315,8 @@ public class BTreeFile implements DbFile {
         parent.insertEntry(entry);
         
         rightPage.setParentId(parent.getId());
-        
+        page.setParentId(parent.getId());
+
         // CRITICAL: Ensure all three involved pages are marked dirty
         dirtypages.put(page.getId(), page);
         dirtypages.put(rightPage.getId(), rightPage);
@@ -384,7 +385,8 @@ public class BTreeFile implements DbFile {
         parent.insertEntry(newParentEntry);
         
         rightPage.setParentId(parent.getId());
-        
+        page.setParentId(parent.getId());
+
         // CRITICAL: Ensure parent and both siblings are marked dirty
         dirtypages.put(page.getId(), page);
         dirtypages.put(rightPage.getId(), rightPage);
@@ -540,6 +542,7 @@ public class BTreeFile implements DbFile {
 			throws DbException, IOException, TransactionAbortedException {
 		Map<PageId, Page> dirtypages = new HashMap<>();
 
+		try {
 		// get a read lock on the root pointer page and use it to locate the root page
 		BTreeRootPtrPage rootPtr = getRootPtrPage(tid, dirtypages);
 		BTreePageId rootId = rootPtr.getRootId();
@@ -561,6 +564,11 @@ public class BTreeFile implements DbFile {
 		leafPage.insertTuple(t);
 
         return new ArrayList<>(dirtypages.values());
+		} catch (DbException | TransactionAbortedException e) {
+			for (Page p : dirtypages.values()) p.markDirty(true, tid);
+			if (e instanceof DbException) throw (DbException) e;
+			throw (TransactionAbortedException) e;
+		}
 	}
 	
 	/**
@@ -896,10 +904,11 @@ public class BTreeFile implements DbFile {
                     throws DbException, IOException, TransactionAbortedException {
         // Lab 4 Exercise 4: Merge Leaf Pages
         
-        // 1. Move all tuples from right to left
+        // 1. Move all tuples from right to left (collect first to avoid concurrent modification)
+        List<Tuple> tuplesToMove = new ArrayList<>();
         Iterator<Tuple> it = rightPage.iterator();
-        while (it.hasNext()) {
-            Tuple t = it.next();
+        while (it.hasNext()) tuplesToMove.add(it.next());
+        for (Tuple t : tuplesToMove) {
             rightPage.deleteTuple(t);
             leftPage.insertTuple(t);
         }
@@ -1037,6 +1046,7 @@ public class BTreeFile implements DbFile {
 			throws DbException, IOException, TransactionAbortedException {
 		Map<PageId, Page> dirtypages = new HashMap<>();
 
+		try {
 		BTreePageId pageId = new BTreePageId(tableid, t.getRecordId().getPageId().getPageNumber(),
 				BTreePageId.LEAF);
 		BTreeLeafPage page = (BTreeLeafPage) getPage(tid, dirtypages, pageId, Permissions.READ_WRITE);
@@ -1050,6 +1060,11 @@ public class BTreeFile implements DbFile {
 		}
 
         return new ArrayList<>(dirtypages.values());
+		} catch (DbException | TransactionAbortedException e) {
+			for (Page p : dirtypages.values()) p.markDirty(true, tid);
+			if (e instanceof DbException) throw (DbException) e;
+			throw (TransactionAbortedException) e;
+		}
 	}
 
 	/**
